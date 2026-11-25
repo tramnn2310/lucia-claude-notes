@@ -1,0 +1,576 @@
+ok
+warning: in the working copy of 'docs/pipeline_review_findings.md', LF will be replaced by CRLF the next time Git touches it
+ docs/pipeline_review_findings.md | 140 ++++++++++++---------------------------
+ 1 file changed, 44 insertions(+), 96 deletions(-)
+### G18
+
+**Status:** FIXED · **Verified:** yes
+
+**Resolution:**
+- **Git commit and branch** on the tracker: see G13.
+- **Holdout runs:** when a run does holdout without training, the features stage only extracts features (`features_all`, `features_all_invalid`, `feature_columns.json`, in a feature run ending in `_extract`). It skips the whole-pool selection, blind split and train/test sets; each holdout selects its own features. Training refuses an extract-only feature run with a clear error. `holdout --run-dir` starts directly at the holdout stage.
+- **Test:** `tests/unit/test_holdout_extract_only.py` (5 cases) and `tests/system/test_holdout_extract_only_e2e.py` (holdout results identical with and without whole-pool selection: all 34 output tables match). No model numbers change.
+
+### G19- Avichai
+
+**Status:** ACCEPTED · **Verified:** —
+
+**Resolution:** W0: database task, not code → W9; procedure and access through a follow-up ticket to Avichai.
+
+Update the SQL database with 00300026. It is beta.
+
+### G20
+
+**Status:** ACCEPTED · **Verified:** yes
+
+**Resolution:** W0: open; `impute_with_selector` at `feature_extraction.py:2468` → W5.
+
+**Where:** `src/core/feature_extraction.py (impute_with_selector, fit_selector, RobustFeatureSelector._clean_features), src/core/feature_selection_poolsel.py (clean_matrix, clean_feature_frame), src/core/stages/features.py:747-827, src/core/stages/holdout.py:1025-1058`
+
+Review `impute_with_selector` and its effect on feature selection. It does not change which features are chosen. `select_features` (holdout: `_select_holdout_features`) finishes first; `fit_selector(..., feature_names=selected)` only stores medians; `impute_with_selector` then `fillna`s the train, test, and estimation frames. The effect is that selection scores one fill and the model trains on another. Ensemble and the other rankers run `_clean_features` on a copy: median when a column is under 10% missing, 0 otherwise. `patient_mrmr_consensus` skips that call, but poolsel's `clean_matrix` fills every NaN with 0 before scoring, and `clean_feature_frame` uses the same 10% rule before the redundancy step. That copy is thrown away. The medians written onto `FeatureSelectorState` are the raw training-column medians (NaNs skipped), and `impute_with_selector` applies that median to every selected column, including columns selection filled with 0. A feature can win the funnel on zero-filled values and then be fit on median-filled values. The medians are taken on the whole train+validation pool, so the later validation split is filled with constants that validation rows helped set. The blind test and the estimation set do not contribute, which is correct. A selected column that is entirely NaN stores `nan`, and `fillna` leaves it missing, so Easy Ensemble still sees the NaN it was meant to remove. Make the matrix that is scored and the matrix that is trained the same fill, or record the difference as intentional.
+
+### G21
+
+**Status:** ACCEPTED · **Verified:** yes
+
+**Resolution:** W0: open. `test_holdout_reports_build_one_report_per_level` still replaces the builder with a fake → W8.
+
+**Where:** `docs/HOLDOUT_CLUSTER_CONFOUNDING_REPORT.md, src/visualization/model_report.py (collapse_cluster_level_statistics, _categorize_accuracy, _normalize_relive_patient_group), src/core/stages/model_reports.py (run_holdout_model_reports), tests/unit/test_model_reports_stage.py`
+
+Add tests for the confounding-factors report, covering the contract in `docs/HOLDOUT_CLUSTER_CONFOUNDING_REPORT.md`. The holdout workbook is built by `collapse_cluster_level_statistics` inside `run_holdout_model_reports`, not by `pool_holdouts` on `file_write_time_level_statistics_*.csv`. Existing tests do not lock that path: `test_holdout_reports_build_one_report_per_level` replaces the builder with a fake, and `test_collapse_with_device_channel_keeps_one_row_per_trace` only checks that a trace stays one row and that `times_tested` is summed. Nothing asserts the worked example for `2025-07-31 11:52:17+00:00` (patient `T-R-0507`): weighted pooling per `file_write_time`, `patient_id`, `model`, `patient_group`, `set`; train mean `0.487407`, std `0.024643`, accuracy `211/404`; validation `0.532391`, `0.029466`, `6/46`; test left as the single fold-3 row (`0.513067`, `0.023307`, `9/50`); `n_holdouts` 9 / 9 / 1. Also untested: the grey band is on `accuracy_rate`, so train stays `grayzone` even though `0.487 ≥ 0.475`, while validation and test are labeled `F3`; class `2` is renamed to `F3` even when it is the merged F3+F4 group; the filename is `confounding_factors_<level>_th-<tag>_<low>_<high>.xlsx` (`manual0d475`, `48_52` for `0.475`/`0.525`). Add a fixture from those stacked rows and assert the pooled sheet values, the labels, and the filename. Do not average the per-holdout accuracies.
+
+### G22
+
+**Status:** FIXED · **Verified:** yes
+
+**Resolution:** A run whose per-trace settings disagree is now stopped when the config loads, before any stage runs.
+- **`training.allow_multi_trace`:** one rule, used by config loading, training and holdout estimation. Rows are per trace when `features.unit: trace` or clustering is off; otherwise they are clusters. Null follows the rows; `false` on per-trace rows and `true` on cluster rows are rejected.
+- **`model_reports.levels`:** `patient` can't be mixed with `cluster`/`trace`, `cluster`/`trace` need `source: holdout`, and `trace` needs per-trace rows. With `source: auto` the check stays at run time.
+- **Also fixed:** holdout estimation read null as false on per-trace runs; the missing trace-file error now names the right setting.
+- **Test:** `tests/unit/test_trace_mode_config.py` (30 cases; 9 fail before, pass after; all shipped configs still load). No model numbers change.
+
+### G23
+
+**Status:** ACCEPTED · **Verified:** —
+
+**Resolution:** W0: task. Holdout runs already save weights (`holdout.save_models`, ceab262) → W9, before G24.
+
+From run to saving models: understand what minimal parameters are needed to fully recreate a model's weights.
+
+### G24
+
+**Status:** ACCEPTED · **Verified:** —
+
+**Resolution:** W0: partly (see G8): holdout weights are saved and can be re-scored; no weight store for training runs and no estimation stage → W9.
+
+Model weight storage and an estimation pipeline stage.
+
+### G25
+
+**Status:** ACCEPTED · **Verified:** —
+
+**Resolution:** W0: task. `model_dashboard/` is on master; `tony/unified-model-dashboard-cloudbuild` is unmerged → W9 (confirm the current version with Lenny/Tony).
+
+Integrate Lenny's model visualization dashboard into the pipeline as a tool, or recreate it as an operational tool.
+
+## Agent review — High (H1–H6)
+
+| ID | Status | Verified | Resolution |
+| --- | --- | --- | --- |
+| H1 | G14 | yes | → G14 (W6) |
+| H2 | G9 | yes | → G9 (W3) |
+| H3 | G11 | yes | → G11 (W4) |
+| H4 | G10 | sub-review (synthetic) | → G10 (W4) |
+| H5- avichai | ACCEPTED | yes | open → W5 |
+| H6 | ACCEPTED | sub-review | Fix in 1bfe9ba; FIXED once test lands → W7 |
+
+### H1
+
+**Status:** G14 · **Verified:** yes
+
+**Resolution:** W0: tracked under G14 → W6.
+
+**Where:** `src/core/stages/features.py:552-581, configs/pipeline_v2/validation_only.yaml`
+
+Features are selected once on the whole train/val pool; every permutation's validation patients come from that same pool, so validation metrics are optimistically biased. Default blind_test_percent: 0 means there is no unbiased estimate at all. Same as notebooks/gilad/pipeline_v2_features.ipynb cell 12. Rename done, uncommitted: default.yaml → validation_only.yaml; no file named default.yaml on purpose (best default is case-dependent).- This is another issue, adding holdouts to the pipeline. G14
+
+### H2
+
+**Status:** G9 · **Verified:** yes
+
+**Resolution:** W0: tracked under G9 → W3.
+
+**Where:** `configs/pipeline_v2/models/balanced_rf.yaml, xgboost.yaml, validation_only.yaml`
+
+Shipped defaults differ from the production notebook: BRF 450 trees/depth 3/max_samples 0.6/youden (notebook 300/4/min_leaf 4/0.8/balanced_acc); XGB 150/depth 2/lr .0425/min_sens .65/min_spec .55 (notebook 275/4/.01/scale_pos_weight 8/.70/.65); n_features 20 (nb 5); control_group L-RAD (nb NOT_LC); permutations 200 (nb 300). Both sets now ship side by side (tuned ids unchanged; notebook values as `*_notebook` plus easy_ensemble_sens80). Model id is the only output name. Provenance of the tuned values is still open (question 1). See G3: these should not stay the defaults.
+
+### H3
+
+**Status:** G11 · **Verified:** yes
+
+**Resolution:** W0: tracked under G11. Still present: `override_temper_reason` recomputes `aggregated_reason` (`override_scheme.py:600`) after the blip relabel → W4.
+
+**Where:** `src/core/stages/preprocessing.py:376-389, src/core/override_scheme.py:541-543`
+
+Blip filter marks rows INVALID_blip_rule via aggregated_reason only; the later temperature override recomputes aggregated_reason from the reason columns, resetting blip-rejected traces to VALID. Stage never calls filter_valid. Rejected traces reach training while the audit says they were removed. Deferred to the next PR: default runs have blip_filter.enabled: false; only grid_clean_preprocessing.yaml turns it on, and that overlay can't finish a run (H4).
+
+### H4
+
+**Status:** G10 · **Verified:** sub-review (synthetic)
+
+**Resolution:** W0: tracked under G10 → W4.
+
+**Where:** `src/core/stages/preprocessing.py:441-447, grid_clean_preprocess.py`
+
+GRID_CLEAN in the stage can't finish a realistic run: AUX rows routed into it lack modified_signal_cut → temperature override KeyError; mixed with type_3/4/5 → extract_section_landmarks "Expected a single shared up_section_tuple_cut" error; NaN Tempr → whole files marked INVALID_temper_reason_override_Bad. No stage test has grid_clean enabled.
+
+### H5- avichai
+
+**Status:** ACCEPTED · **Verified:** yes
+
+**Resolution:** W0: open. `feature_selection_poolsel.py` still needs TSF names (`FEATURE_NAME_RE`, `:96`; error at `:830`). Unmerged Eran branches touch this → W5.
+
+**Where:** `src/core/feature_selection_poolsel.py:83-85, 128-130, 737-743`
+
+patient_mrmr_consensus only accepts TSF-named columns {section}_n{N}_i{i}_{desc}; this repo's extractor produces increase_mean, middle_p5, etc. Selecting this method fails with "no TSF feature columns" (and the TSF extractors were deleted in this PR). WE always need to have this TSF conventions.  If TSF =1 than for all features N=0 I =1. Since eran’s TSF includes lenny’s old feature extraction we can just remove the old version and use TSF =1 in case we want to revert to lenny’s only feature extracitn
+
+### H6
+
+**Status:** ACCEPTED · **Verified:** sub-review
+
+**Resolution:** W0: code reading shows the fix in 1bfe9ba. Production `ThresholdClassifier.fit` now uses `StratifiedGroupKFold` on patient ids (`train.py:90-121`), the same grouping tuning uses. Stays ACCEPTED until a regression test confirms it → W7.
+
+**Where:** `src/core/balanced_rf_tuning.py:344-394 vs src/core/train.py:96-105`
+
+Tuning calibrates the threshold with patient-grouped inner folds; production ThresholdClassifier uses row-level StratifiedKFold(random_state=42). Hyperparameters were optimized for a procedure that is not what ships.
+
+## Agent review — Medium (M1–M19)
+
+| ID | Status | Verified | Resolution |
+| --- | --- | --- | --- |
+| M1 | ACCEPTED | yes | Fix in 1bfe9ba; FIXED once test lands → W7 |
+| M2 | ACCEPTED | yes | open → W6 |
+| M3 | ACCEPTED | sub-review | open → W5 |
+| M4 | ACCEPTED | sub-review | open → W5 |
+| M5 | ACCEPTED | sub-review | open → W5 |
+| M6 | ACCEPTED | sub-review (synthetic) | open → W4 |
+| M7 | ACCEPTED | sub-review | open → W4 |
+| M8 | ACCEPTED | sub-review (synthetic) | open → W4 |
+| M9 | ACCEPTED | sub-review (synthetic) | open → W4 |
+| M10 | ACCEPTED | sub-review | open → W4 |
+| M11 | FIXED | sub-review | W2: drops recorded under stage `grid_clean` + test |
+| M12 | ACCEPTED | sub-review | open → W7 |
+| M13 | ACCEPTED | sub-review | open → W7 |
+| M14 | ACCEPTED | yes | open → W8 |
+| M15 | ACCEPTED | sub-review (real CSV) | open → W8 |
+| M16 | ACCEPTED | sub-review | open → W8 |
+| M17 | ACCEPTED | sub-review | open → W8 |
+| M18 | ACCEPTED | sub-review | open → W8 |
+| M19 | ACCEPTED | sub-review | open → W8 |
+
+### M1
+
+**Status:** ACCEPTED · **Verified:** yes
+
+**Resolution:** W0: code reading shows the fix in 1bfe9ba (`train.py:90-121`, `StratifiedGroupKFold` on patient ids, `random_state=42`). Stays ACCEPTED until a regression test confirms it → W7.
+
+**Where:** `src/core/train.py:96-105`
+
+ThresholdClassifier threshold calibration folds split rows, not patients → patients with several rows leak across inner folds; threshold tuned on optimistic OOF scores. Small at ~1.1 rows/patient, large for trace-level data the PR now explicitly targets.
+
+### M2
+
+**Status:** ACCEPTED · **Verified:** yes
+
+**Resolution:** W0: open; reproduce in W6.
+
+**Where:** `src/core/stages/features.py:794-795`
+
+Feature-stability diagnostic runs on work (before the blind split), so it includes blind-test patients' labels. Doesn't change the trained model, but leaks if used to pick method / n_features.
+
+### M3
+
+**Status:** ACCEPTED · **Verified:** sub-review
+
+**Resolution:** W0: open; `feature_stability.py` changed since (1bfe9ba, multi-label classes) but the broad `except Exception` (`:242`) remains → W5.
+
+**Where:** `src/core/feature_stability.py:66-73, 219-230`
+
+Stability ignores configured features.selection_kwargs (measures a different selector than trained), and swallows per-method exceptions — with default methods [ensemble, patient_mrmr_consensus] the mRMR half silently fails (see H5).
+
+### M4
+
+**Status:** ACCEPTED · **Verified:** sub-review
+
+**Resolution:** W0: `feature_selection_poolsel.py` unchanged since the review; reproduce in W5.
+
+**Where:** `feature_selection_poolsel.py:763-790`
+
+Supervised pre-ranking to the 29-feature pool uses all training patients before the bootstrap → OOB AUCs/consensus weights optimistic (noise test: 0.69 vs 0.48).
+
+### M5
+
+**Status:** ACCEPTED · **Verified:** sub-review
+
+**Resolution:** W0: `feature_selection_poolsel.py` unchanged since the review; reproduce in W5.
+
+**Where:** `feature_selection_poolsel.py:523-529, 763-769`
+
+"Patient" mRMR computes relevance/redundancy on rows; patients with many traces dominate. Only bootstrap and OOB AUC are patient-level.
+
+### M6
+
+**Status:** ACCEPTED · **Verified:** sub-review (synthetic)
+
+**Resolution:** W0: `plateau_median_global: True` default unchanged (`grid_clean_preprocess.py:111`); reproduce in W4.
+
+**Where:** `grid_clean_preprocess.py:383-412`
+
+GRID_CLEAN plateau median is pooled over AUX, invalid, all breaths, all sensor types; old pipeline computed per breath on filtered data. plateau_median_global: false doesn't switch to per-breath.
+
+### M7
+
+**Status:** ACCEPTED · **Verified:** sub-review
+
+**Resolution:** W0: open; reproduce in W4.
+
+**Where:** `grid_clean_preprocess.py (median/layout)`
+
+Median/layout/outlier gate re-derived from whatever cohort is passed (incl. test patients) and never persisted → transductive, non-reproducible at inference.
+
+### M8
+
+**Status:** ACCEPTED · **Verified:** sub-review (synthetic)
+
+**Resolution:** W0: cut still has no end-bound check (`plateau_normalization.py:430-432`); a `sig_len` filter follows — reproduce whether short cuts survive it → W4.
+
+**Where:** `plateau_normalization.py:410-412`
+
+Cut raw[u0-30 : d0+90] has no end-bound check → some outputs shorter than the layout (379 vs 399).
+
+### M9
+
+**Status:** ACCEPTED · **Verified:** sub-review (synthetic)
+
+**Resolution:** W0: still present: `range(lo, max(lo, hi - 4))` (`trigger_detection.py:89`) → W4.
+
+**Where:** `trigger_detection.py:89`
+
+Search window range(lo, max(lo, hi-4)) makes "DB±15" actually [−15, +10] (and ±150 → [−150, +145]).
+
+### M10
+
+**Status:** ACCEPTED · **Verified:** sub-review
+
+**Resolution:** W0: open; reproduce in W4.
+
+**Where:** `stages/preprocessing.py:420-422`
+
+Stage sensor-type filter drops AUX/INDEX rows (old schema_mapper.filter_by_sensor_types kept them) → temperature override and State-stage rule silently skipped.
+
+### M11
+
+**Status:** FIXED · **Verified:** sub-review
+
+**Resolution:** GRID_CLEAN drops are recorded in the removal audit under stage `grid_clean`, with reasons `grid_clean_median_gate`, `grid_clean_length_filter` and `grid_clean_incomplete_feature_window`, including which traces were dropped.
+- **Test:** `tests/unit/test_grid_clean_drop_audit.py` (3 cases; the 2 recording cases fail before, pass after).
+- **Still open:** an end-to-end run with GRID_CLEAN enabled, which comes with G10/H4.
+
+### M12
+
+**Status:** ACCEPTED · **Verified:** sub-review
+
+**Resolution:** W0: tuning configs still search `min_sensitivity` / `min_specificity` (`configs/experiments/pipeline_v2_*_tuning.yaml`) → W7.
+
+**Where:** `configs/experiments/pipeline_v2_*_tuning.yaml:12-31`
+
+Tuning searches min_sensitivity/min_specificity while maximizing balanced accuracy → rewarded for loosening clinical floors; shipped XGB sits exactly at lower bounds 0.65/0.55.
+
+### M13
+
+**Status:** ACCEPTED · **Verified:** sub-review
+
+**Resolution:** W0: open → W7.
+
+**Where:** `balanced_rf_tuning.py:438, 584`
+
+Best of ~800 trials chosen by single fixed 5-fold split mean (no repeats / 1-SE rule) on selection-leaked data → winner's curse. Objective is row-level balanced accuracy.
+
+### M14
+
+**Status:** ACCEPTED · **Verified:** yes
+
+**Resolution:** W0: still `rbc = 1 - 2U/(nₐn_b)` (`feature_and_patient_score_report.py:311`); legend sign to check → W8.
+
+**Where:** `src/visualization/feature_and_patient_score_report.py:311 vs :826-827`
+
+RBC sign inverted: 1 − 2U/(nₐn_b) is negative when group A is higher, legend says positive. Signed values in plot/CSV read backwards.
+
+### M15
+
+**Status:** ACCEPTED · **Verified:** sub-review (real CSV)
+
+**Resolution:** W0: open; reproduce with a two-visit patient in W8.
+
+**Where:** `train.py:1819 → model_report.py, feature report`
+
+Patient-level stats group by visit_number/site_name too → a patient with 2 visits/sites counted as 2 "patients" (e.g. 30 test rows for 26 patients) in TP/FN/ROC/Mann-Whitney n.
+
+### M16
+
+**Status:** ACCEPTED · **Verified:** sub-review
+
+**Resolution:** W0: no multiple-testing correction in `model_report.py` → W8.
+
+**Where:** `model_report.py:328-452, 2120-2326`
+
+New confounder tests compare factor levels with LC and control pooled (label imbalance across sites looks like confounding); no multiple-testing correction; Train tables use in-sample predictions.
+
+### M17
+
+**Status:** ACCEPTED · **Verified:** sub-review
+
+**Resolution:** W0: `_omit_greyzone_rows` still used before metrics (`model_report.py:236, 465`) → W8.
+
+**Where:** `model_report.py:4155-4186, 4506-4511`
+
+AUC / threshold / Mann-Whitney computed after removing greyzone patients → optimistic, not comparable with full-cohort AUC.
+
+### M18
+
+**Status:** ACCEPTED · **Verified:** sub-review
+
+**Resolution:** W0: default still `roc_curve_set: str = "test"` (`model_report.py:3691`) → W8.
+
+**Where:** `model_report.py:3781`
+
+`build_*_confounding_factor_report(roc_curve_set="test")` default fits the threshold on test and reports test with it. Stage overrides with validation, but direct/notebook callers inherit the leaky default. No test-set AUC reported.
+
+### M19
+
+**Status:** ACCEPTED · **Verified:** sub-review
+
+**Resolution:** W0: still present: loop variable `prevalence` (`model_report.py:4991`) shadows the parameter → W8.
+
+**Where:** `model_report.py:4437`
+
+Loop variable prevalence shadows the function parameter → for models after the first, PPV/NPV use 0.002 regardless of config.
+
+## Agent review — Low / Info (L1–L19)
+
+| ID | Status | Resolution |
+| --- | --- | --- |
+| L1 | WONTFIX | Cap n and current rounding kept (groups have 5+ patients); comment corrected + test |
+| L2 | FIXED | W1: warning + `effective_fraction` + test |
+| L3 | FIXED | W1: NumPy seeded + restored, test |
+| L4 | FIXED | W1: explicit + warning + test; report side → SW-604 |
+| L5 | FIXED | W1: warning + reason + test |
+| L6 | FIXED | W1: warning + flag + reason + test |
+| L7 | ACCEPTED | open → W4 |
+| L8 | ACCEPTED | open → W4 |
+| L9 | FIXED | aac57b7 + test (W1) |
+| L10 | ACCEPTED | open → W4 |
+| L11 | ACCEPTED | moved → W4 |
+| L12 | FIXED | W1: default `none` + test |
+| L13 | WONTFIX | W2: default `false` kept by design |
+| L14 | ACCEPTED | open → W5 |
+| L15 | ACCEPTED | open → W7 |
+| L16 | FIXED | W1: audit states its scope + test |
+| L17 | ACCEPTED | open → W8 |
+| L18 | ACCEPTED | open → W8 |
+| L19 | FIXED | W1: doc updated + doc test |
+
+### L1
+
+**Status:** WONTFIX
+
+**Resolution:** W0: `partition_testing.py` unchanged since the review. W1: the claim is in the comment at `train.py:1858` ("existing runs reproduce exactly"). It holds for the shipped `val_size` values (20, 11.1111) with pools of 2+ patients, but not for every percentage (35% of 90 draws 31, not 32) or for a one-patient pool (1 instead of 0). The comment now says exactly that. Draws are unchanged, so no run changes. Test: `tests/unit/test_partition_sizes.py` checks both the matching cases (pool sizes 2–1999) and the exceptions.
+
+**Where:** `partition_testing.py:86-95`
+
+Docstring claims "random" reproduces old runs exactly; true for val_size=20, but e.g. 35% with pools of 90/170 draws one fewer patient (float `n*0.35` vs `n*35/100`). Verified.
+
+### L2
+
+**Status:** FIXED
+
+**Resolution:** The `rotating` validation drawer records the fraction it actually uses (`effective_fraction` = 1 / number of slices) and warns when it differs from the requested one (30% → 3 slices of 33.3%). Draws are unchanged; no shipped config uses `rotating`.
+- **Test:** `tests/unit/test_partition_sizes.py` (rotating cases fail before, pass after).
+
+### L3
+
+**Status:** FIXED
+
+**Resolution:** Training seeds NumPy's global random generator as well as Python's, and restores both afterwards. Results don't change: the shipped models set their own `random_state`.
+- **Test:** `tests/unit/test_training_seed.py` (fails before, passes after).
+
+### L4
+
+**Status:** FIXED
+
+**Resolution:** With several models, the aggregate training result says which model it describes (`aggregate_model_id`), offers `results_by_model()` for all of them, and warns that it holds the last model only. Existing callers keep working.
+- **Test:** `tests/unit/test_training_stage.py` (2 cases; fail before, pass after).
+- **Related bug:** model reports from a training run with several models report only the last one: SW-604.
+
+### L5
+
+**Status:** FIXED
+
+**Resolution:** When no threshold meets `min_sensitivity` / `min_specificity`, the classifier warns, names the unmet constraints, and records `threshold_fallback_reason = constraints_unmet` in the per-model table.
+- **Test:** `tests/unit/test_threshold_fallback.py` (fails before, passes after).
+
+### L6
+
+**Status:** FIXED
+
+**Resolution:** When a class has too few rows or patients to fit a threshold, the classifier warns, sets `threshold_fallback = True` and records the reason (`single_class` or `too_few_patients`) in the per-model table.
+- **Test:** `tests/unit/test_threshold_fallback.py` (fails before, passes after).
+
+### L7
+
+**Status:** ACCEPTED
+
+**Resolution:** W0: `blip_filter.py` unchanged since the review → W4.
+
+**Where:** `blip_filter.py:162-163, 193-197`
+
+count_down_trig_sample=false doesn't reproduce legacy counts ("bracketed" +1).
+
+### L8
+
+**Status:** ACCEPTED
+
+**Resolution:** W0: `blip_filter.py` unchanged since the review → W4.
+
+**Where:** `blip_filter.py:132-139`
+
+_down_trig_was_repaired compares raw vs modified at a raw-frame index after spike correction shortens the signal.
+
+### L9
+
+**Status:** FIXED
+
+**Resolution:** A missing (NaN) up/down trigger no longer stops trigger detection for the whole cohort; that landmark is skipped (aac57b7).
+- **Test:** `tests/unit/test_trigger_detection_anchors.py::test_missing_landmark_does_not_abort_the_cohort` (fails before the fix with `cannot convert float NaN to integer`).
+
+### L10
+
+**Status:** ACCEPTED
+
+**Resolution:** W0: open (`grid_clean_preprocess.py:380`) → W4.
+
+**Where:** `grid_clean_preprocess.py:428-430`
+
+median_from_up_start_to_down_start: false leaves min/max None → all rows filtered, misleading error.
+
+### L11
+
+**Status:** ACCEPTED
+
+**Resolution:** W0: `first_descent` now lives in `eran_preprocess.py` and `config/validate.py:325`, not `trigger_detection.py`; re-check the naming there → W4.
+
+**Where:** `trigger_detection naming`
+
+first_descent anchor is actually last plateau sample (off-by-one naming; behavior matches documented example).
+
+### L12
+
+**Status:** FIXED
+
+**Resolution:** `apply_sensor_fusion` defaults to `mode="none"`, the only implemented mode; the removed modes still raise when asked for. `src/core/pipeline.py` is gone (1bfe9ba).
+- **Test:** `tests/unit/test_sensor_fusion.py` (fails before, passes after).
+
+### L13
+
+**Status:** WONTFIX
+
+**Resolution:** W0: `retain_excluded_override_rows: false` (`validation_only.yaml:122`). W2 (decided 2026-11-19): the default stays `false`, by design. Rows explicitly excluded by a site-period or blocked-unit override (`INVALID_overide_by_period`, `INVALID_overide_by_unit_number`) are marked invalid, so they never reach training. Every one of them is still recorded in the removal audit when the override marks it (`override_scheme.py`, `tracker.record_filter`). Only the saved `processed.pkl` leaves them out (`preprocessing_persistence.py`). A run that needs them in `processed.pkl`, as the notebook had them, can set `preprocessing.persistence.retain_excluded_override_rows: true`. No code change.
+
+**Where:** `preprocessing persistence`
+
+retain_excluded_override_rows: false drops site-period/unit-excluded rows from processed.pkl (notebook saved them).
+
+### L14
+
+**Status:** ACCEPTED
+
+**Resolution:** W0: `feature_selection_poolsel.py` unchanged since the review → W5.
+
+**Where:** `feature_selection_poolsel.py`
+
+MI inflated on bootstrap duplicates; median imputation never fires (NaN→0 first); consensus collapses to all-1.0 when no replicate scored; quota pool can exceed target with `>4` sections; selection_kwargs from ensemble configs crash poolsel (correlation_threshold vs corr_threshold); recursive has no ranking.
+
+### L15
+
+**Status:** ACCEPTED
+
+**Resolution:** W0: xgboost pins still differ: 3.0.2 / 2.1.1 / `>=1.6.0` across requirements files → W7.
+
+**Where:** `tuning`
+
+youden ≡ balanced_accuracy for threshold choice (wasted search dim); n_jobs=4 + load_if_exists non-reproducible; EasyEnsemble scores ValueError folds as 0; xgboost pins differ across requirements files (3.0.2 / 2.1.1 / `>=1.6`).
+
+### L16
+
+**Status:** FIXED
+
+**Resolution:** `verify_partitions` states what it checked: `scope: planned` (the draw scheme only, when called by `test_partitions`) or `scope: recorded_run` (a finished run's recorded splits, in the partition report). The report shows the note under the PASS/FAIL banner and names the checks that guard real runs.
+- **Test:** `tests/unit/test_partition_audit_scope.py` (fails before, passes after).
+
+### L17
+
+**Status:** ACCEPTED
+
+**Resolution:** W0: open → W8.
+
+**Where:** `reports`
+
+Greyzone boundary inconsistent between model report (inclusive) and feature report; "High Risk Summary" labelled Test but uses roc_curve_set rows; age computed vs today, not sample date; no CIs anywhere; model_reports stage may pick newest CSV by mtime ignoring mode_hint.
+
+### L18
+
+**Status:** ACCEPTED
+
+**Resolution:** W0: default bucket `nanose_ml` (`unit_report.py:1730`) → W8.
+
+**Where:** `unit_report.py (89b488d)`
+
+Removed production_date uniqueness warning and 16-slot diagram; default bucket changed nanose_clinical_data → nanose_ml.
+
+### L19
+
+**Status:** FIXED
+
+**Resolution:** `docs/GRID_CLEAN_PREPROCESSING.md` uses the Pipeline V2 keys (`preprocessing.grid_clean.*`, `preprocessing.blip_filter.*`, `preprocessing.channel_type_filter`) and points at files that exist.
+- **Test:** `tests/unit/test_grid_clean_doc.py` (every path, function and key the doc names exists; fails before, passes after).
+
+## Confirmed correct (no action)
+
+- Default preprocessing path (grid_clean/blip off) matches pipeline_v2_preprocessing.ipynb step-by-step.
+- Clustering stage matches pipeline_v2_clustering.ipynb (cohesive + weighted_mean, unchanged algorithm).
+- plateau_normalization.py is a faithful move; eran_ali→crop_pad rename is backward compatible (anything ≠ cubic = crop/pad).
+- data_splitting.py is identical to the old blind_split.choose_test_files / train_test_split_by_file (unused helpers dropped, nothing imports them).
+- RandomDrawer reproduces the old per-permutation validation sampling for default val_size=20, same global RNG.
+- Labels 1/2 → 0/1 encoding correct throughout training, tuning (XGBoost safe), poolsel OOB AUC, and ROC (pos_label).
+- PPV/NPV Bayes formulas, top_left/youden/manual thresholds correct; default roc_curve_set: validation → test metrics not threshold-leaked.
+- Patient-level aggregation keeps train/validation/test separate.
+- Tuning folds are truly StratifiedGroupKFold by patient; blind test never touched during tuning.
+- XGBoost CPU accelerator mapping doesn't change predictions (xgboost 3.0.2).
+- No remaining code imports any of the ~130 deleted Python modules.
+
+## Questions for the author
+
+1. Where do the shipped BRF/XGB hyperparameters and n_features: 20 / L-RAD / permutations: 200 come from (tuning run id, feature run, score)? Should defaults revert to the notebook values? **SW-589:** → W3
+2. Was GRID_CLEAN / blip ever run end-to-end through stages/preprocessing.py? (H3, H4 suggest not.) **SW-589:** → W4
+3. Is patient_mrmr_consensus meant to work only on externally produced TSF frames? If so, should it be rejected by config validation for this extractor? **SW-589:** → W5
+4. Should ThresholdClassifier use StratifiedGroupKFold on patient_id to match tuning (H6, M1)? **SW-589:** → W7 (answered for production by 1bfe9ba: yes, `StratifiedGroupKFold`)
+5. Storage side of G1 is answered (study: lucia | relive → datasets_models/`<study>`/{datasets,results}). Still open: should the model-report stage call build_relive_confounding_factor_report when study: relive? **SW-589:** → W8
+### L19
+
+**Status:** FIXED
+
+**Resolution:** `docs/GRID_CLEAN_PREPROCESSING.md` uses the Pipeline V2 keys (`preprocessing.grid_clean.*`, `preprocessing.blip_filter.*`, `preprocessing.channel_type_filter`) and points at files that exist.
+- **Test:** `tests/unit/test_grid_clean_doc.py` (every path, function and key the doc names exists; fails before, passes after).
+
+## Confirmed correct (no action)
+44

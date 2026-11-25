@@ -1,0 +1,6 @@
+- [Plans in .claude.local](plans-in-claude-local.md) — save plans as .claude.local/plans/plan_<ticket>_<task>_<version>.md; implement from them
+- [Review checkpoint per workstream](review-checkpoint-per-workstream.md) — stop after each workstream commit; wait for explicit approval
+- [No Claude co-author](no-claude-coauthor.md) — no Claude co-author in commits, no "Generated with Claude Code" in PRs
+- [Jira ticket style](jira-ticket-style.md) — short Jira text: counts not per-finding detail; don't name workstreams reviewers don't know
+- [FIXED findings show current state](findings-fixed-items-current-state.md) — in pipeline_review_findings.md, FIXED items drop the original text; review before commit
+- [SW-603/604/605/611 tracking](sw589-bug-tickets-tracking.md) — Tram's bug tickets; verify each workstream and keep Jira status current
