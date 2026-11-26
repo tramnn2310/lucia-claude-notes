@@ -1,6 +1,6 @@
 # Review: SW-589 W5, feature extraction and selection
 
-- **Status:** group A `[x]` approved by Tram on 2026-11-22 · group B waiting for decisions · **Jira:** SW-598 (In Progress)
+- **Status:** group A `[x]` approved by Tram on 2026-11-22 · group B: H5, M4, M5, L14 committed; M4, M5, L14 defaults wait for the campaign comparison; G20 waiting on SW-613 · **Jira:** SW-598 (In Progress)
 - **Branch:** `tram/sw-589-preprocess-features` (same as W4; PR 2)
 - **Range (group A):** `sw589-W5-start..sw589-W5A-review` (3 commits)
 - **Findings text:** committed after approval.
@@ -20,7 +20,7 @@
 | 1854dfa | G7 | Add a regression test for filtered rows in the estimation set |
 | f376997 | M3 | Measure stability with the run's selector settings and report failures |
 | 4abb5ea | L14 | Fix the poolsel median fill and quota size, reject unknown settings |
-| (uncommitted) | G7, M3, L14 | Findings text |
+| d18bd70 | G7, M3, L14 | Findings text |
 
 ## Files changed (riskiest first)
 
@@ -62,7 +62,7 @@ SW-603 (in PR #52), SW-604, SW-605: not touched by W5.
 
 ## Group B
 
-Done: **H5** (Avichai confirmed yes 2026-11-25); **M4, M5, L14** (Eran answered 2026-11-25, all implemented as opt-in config options, default off, for the campaign comparison). Still blocked: **G20** (Eran deferred the missing-value policy to Gilad and Avichai).
+Done: **H5** (Avichai confirmed yes 2026-11-25); **M4, M5, L14** (Eran answered 2026-11-25, all implemented as opt-in config options, default off, for the campaign comparison). Waiting: **G20** (Eran deferred the missing-value policy to Gilad and Avichai; split out to SW-613).
 
 ### H5 (2026-11-25): TSF is the only extractor
 
@@ -79,14 +79,14 @@ Done: **H5** (Avichai confirmed yes 2026-11-25); **M4, M5, L14** (Eran answered 
 
 ### M4, M5 (2026-11-25): two opt-in selection axes
 
-Eran's reply set the rule: all four W5 group B items change which features are selected, so each ships as a config option that is off by default, to be compared on one campaign while the published runs stay reproducible. M4 and M5 are implemented on that basis; L14 and G20 still need decisions.
+Eran's reply set the rule: all four W5 group B items change which features are selected, so each ships as a config option that is off by default, to be compared on one campaign while the published runs stay reproducible. M4, M5 and L14 (below) are implemented on that basis; G20 waits on the missing-value policy (SW-613).
 
 | Finding | Was | Now | What changed |
 |---|---|---|---|
 | M4 | ACCEPTED (sub-review) | ACCEPTED, **option implemented** | `pool_in_bootstrap` (default off): rebuild the ranking + pool inside each replicate from in-bag patients |
 | M5 | ACCEPTED (sub-review) | ACCEPTED, **option implemented** | `patient_balanced_scoring` (default off): weight each row by 1/(patient row count) in the RF relevance and the redundancy |
 
-- **Commit:** `a32c711` SW-589 M4, M5 (code + test). Findings text uncommitted.
+- **Commits:** `a32c711` (code + test), `b200ac1` (findings text).
 - **One file:** `src/core/feature_selection_poolsel.py`. The rank-gate-pool block is factored into `_rank_gate_pool` so the once-over path and the per-replicate path share it; `bootstrap_consensus` gained `patient_balanced` + a `pool_builder`; `ensemble_blend_scores` / `_abs_spearman` / `select_mrmr_soft` / `order_hybrid` take optional sample weights; new `inverse_patient_row_weights`, `_weighted_corrcoef`.
 
 **Test evidence** — `tests/unit/test_poolsel_patient_and_pool.py` (8 cases):
@@ -112,8 +112,8 @@ Eran's reply set the rule: all four W5 group B items change which features are s
 
 **Still owed / open from Eran's reply:**
 - Give Eran what the 0.69 noise figure was measured on (cohort size, feature count, class ratio, shuffled labels vs synthetic) — likely Gilad.
-- L14 MI: build both de-dup methods and compare on a campaign.
-- G20 missing-value policy and the M5 training-weight question → Gilad + Avichai.
+- Campaign comparison to pick the M4, M5 and L14 defaults (both L14 de-dup methods are built).
+- G20 missing-value policy (SW-613) and the M5 training-weight question → Gilad + Avichai.
 
 ### L14 MI duplicates (2026-11-25): opt-in bootstrap schemes
 
@@ -125,7 +125,7 @@ Eran offered two ways to stop the bootstrap's duplicate rows inflating the mutua
 | `score_unique` (yours) | still draw with replacement, but select on each drawn patient once; duplicates stay only in the model fit |
 | `rotating` (Eran's) | draw without replacement in rotating per-class slices; no duplicates, every patient left out the same number of times |
 
-- **Commit:** `79a0e50` (code + test). Findings text uncommitted.
+- **Commits:** `79a0e50` (code + test), `dae8cc3` (findings text).
 - **Design points (please check):**
   1. The loop now splits the rows used for selection from the rows used for the model fit, so `score_unique` can de-duplicate selection while the out-of-bag AUC keeps its bootstrap character. In `with_replacement` the two are the same rows, which is why the default stays byte-identical.
   2. `rotating` picks its fold count from the cohort — capped so each per-class slice stays at/above the two-class out-of-bag floor (`min_oob_per_class=2`), because `n_bootstrap=15` on a small cohort would make every slice too small to score. On the real ~100-patient cohort the cap does nothing. Rotating then runs one replicate per slice.
@@ -138,7 +138,7 @@ Group A ran on the Windows venv. H5 ran on a fresh Linux clone: new venv `.venv`
 
 ## How to review
 ```bash
-git log --oneline sw589-W5-start..HEAD
-git show HEAD   # the H5 code commit
-git diff docs/pipeline_review_findings.md   # uncommitted findings text (H5 FIXED)
+git show 9cbfcab faa731b      # H5: code, findings text
+git show a32c711 b200ac1      # M4, M5: code, findings text
+git show 79a0e50 dae8cc3      # L14 schemes: code, findings text
 ```

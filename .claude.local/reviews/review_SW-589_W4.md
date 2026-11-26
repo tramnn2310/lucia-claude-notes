@@ -171,4 +171,4 @@ Avichai: on by default; keep only < 5 before / < 4 after / < 10 total (max 4 / 3
 | G10 | WAITING | SW-612 (created 2026-11-25, assigned to Eran) | Eran: final module, the md |
 | G11 | FIXED | SW-621 (Done) | Avichai confirmed `blip_tuple` at the daily meeting (Tram: enough) |
 
-SW-619, SW-620, SW-621: Tasks, assigned to Tram, linked to SW-589. SW-621 closed the same day. Findings text committed in e1cf095. The other 10 W4 findings are FIXED, so 11 of 13 are FIXED.
+SW-619, SW-620, SW-621: Tasks, assigned to Tram, linked to SW-589. SW-621 closed the same day. Findings text committed in e1cf095. 10 of 13 W4 findings are FIXED (G11, H3, H4, M8, M9, M10, L7, L8, L10, L11); 3 wait on Eran (M6 SW-619, M7 SW-620, G10 SW-612).
