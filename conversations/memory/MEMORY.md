@@ -4,3 +4,4 @@
 - [Jira ticket style](jira-ticket-style.md) — short Jira text: counts not per-finding detail; don't name workstreams reviewers don't know
 - [FIXED findings show current state](findings-fixed-items-current-state.md) — in pipeline_review_findings.md, FIXED items drop the original text; review before commit
 - [SW-603/604/605/611 tracking](sw589-bug-tickets-tracking.md) — Tram's bug tickets; verify each workstream and keep Jira status current
+- [Always push the branch](always-push-branch.md) — push branch + tags after every commit (2-machine workflow); PR opened separately/later

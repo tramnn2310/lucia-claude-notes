@@ -241,7 +241,12 @@ Two levels: **the workstream decides which branch and PR a commit goes into; the
 - L15: tuning reproducibility; one pinned xgboost version.
 - Q4.
 
-**W8. Reports** (Jira SW-601)
+**W8. Reports** (Jira SW-601, In Progress) `[~]` (started 2026-11-26 on `tram/sw-589-preprocess-features`, tag `sw589-W8-start`) (changes report numbers; agree the methodology items first)
+- **Triage (2026-11-26):**
+  - **Group A — stage/runner bugs, no methodology judgment `[x]` (done 2026-11-26, tag `sw589-W8A-review`, at review):** SW-605 (`--resume` always reruns features; 1c19711), SW-604 (one report per trained model, not only the last; c2b0fae). 4 new tests + 1 rewired, 3 red-before. Pre-existing e2e failure `test_unused_study_group_is_left_out[NOT_LC-L-RAD]` is a baseline (likely SW-611), not W8.
+  - **Group B — unambiguous report-number bugs `[x]` (done 2026-11-26, at review):** M14 (RBC sign, Kerby form; 66b99ca), M19 (prevalence shadowing fixed by renaming to `risk_prevalence`; c1ae7a6). 4 red-before tests. Built the reusable `write_confounding_report_inputs` fixture for the report builder. M15 moved to Group C (combining a patient's visits is a methodology call). Findings file for M14/M19 drafted, not committed (awaiting review).
+  - **Group C — needs Eran's methodology decision (reuse the Group B fixture):** M15 (how to count a patient with several visits/sites), M16 (which multiple-testing correction), M17 (AUC on full cohort vs greyzone-omitted), M18 (default `roc_curve_set`), L17 (greyzone/labels/age/CIs/mtime).
+  - **Group D:** L18 (production_date warning + default bucket), G21 (confounding-report tests), G1 open part + Q5 (ReLIVE report from a training run).
 - M14: RBC sign.
 - M15: count patients, not visit/site rows.
 - M16: confounder tests stratified, with multiple-testing correction.
