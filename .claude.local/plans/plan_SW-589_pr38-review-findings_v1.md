@@ -230,7 +230,10 @@ Two levels: **the workstream decides which branch and PR a commit goes into; the
 - G16: test-set-only and holdout-test workflows share one path.
 - L1 follow-up (decided 2026-11-19, Gilad + Tram): keep `_n_to_draw` as it is (cap at n, current rounding); L1 is WONTFIX. Instead, add a check before drawing: **warn when a study group's training pool has fewer than 5 patients** (Gilad: real groups have at least 5–10; ~100 patients in the real dataset). Warning only, no change to draws. Test: a pool with a 4-patient group warns, a 5-patient group doesn't, draws identical with and without the warning.
 
-**W7. Training, threshold and tuning** (Jira SW-600) (changes model numbers; agree each one first)
+**W7. Training, threshold and tuning** (Jira SW-600, In Progress) `[~]` (started 2026-11-25 on `tram/sw-589-training-defaults`, tag `sw589-W7-start`) (changes model numbers; agree each one first)
+- **Triage (2026-11-25):**
+  - **A. Fix now, no change to shipped models or default runs:** M1 (regression test for the patient-grouped threshold folds, fix already in 1bfe9ba); H6 (tuning calls production `ThresholdClassifier.fit(X, y, groups)` instead of its own copy) + Q4 (answered by 1bfe9ba); G6 (verify per-trace training with a test); L15 part (EasyEnsemble failing fold fails the trial instead of scoring 0; resume guard on the Optuna study; record that `parallel_trials > 1` isn't reproducible).
+  - **B. Need a decision:** M12 + L15 youden (stop searching the clinical floors and the threshold metric; Gilad), M13 (repeated CV, 1-SE rule, patient-level objective; Gilad, Eran), L15 xgboost pin (one version everywhere; Avichai).
 - G6: verify training is per trace.
 - M1 + H6: patient-grouped threshold folds, matching tuning. The fix is already on master (1bfe9ba), so only add the regression test (no `patient_id` in two inner folds), then set M1 and H6 to FIXED.
 - M12: tuning doesn't search the clinical floors.
@@ -489,6 +492,8 @@ One PR with all 69 findings would mix safe fixes with changes that move model me
 - **v1, update 42 (2026-11-25):** Eran answered G9 (keep the legacy trio as the silent default for both run types; adapted trio optional; 7-model catalog; provenance next to models). G9 round planned on `tram/sw-589-training-defaults`; open items listed under it.
 - **v1, update 43 (2026-11-25):** G9 round done (6543d7b): default models per run type, provenance blocks, XGBd2. No run changes (22 config/run-type cases identical, hashes unchanged). Findings text uncommitted; waiting for Tram's review.
 - **v1, update 44 (2026-11-25):** G9 findings text committed (c20fd44). Tram asked Eran to confirm the model name (`balanced_random_forest_lucia_legacy` = `balanced_rf_aggregated_tuned_lucia_legacy`?) and the run-type rule (clustering off counts as per trace). Waiting for his answer.
+- **v1, update 45 (2026-11-25):** W7 planned and approved by Tram: group A (M1, H6 + Q4, G6, L15 part) now; group B (M12, M13, L15 youden and xgboost pin) waits for Gilad, Eran, Avichai.
+- **v1, update 46 (2026-11-25):** W7 group A done (tag `sw589-W7A-review`, 4 commits): M1, H6, G6 FIXED, Q4 answered, L15 3 fixes. 9 test cases (6 red before; G6's 3 are a verification). Suite 548 -> 557 passed, failures unchanged. Findings text uncommitted; waiting for Tram's review.
 - **v1, update 38 (2026-11-22):** W5 group A approved; findings text committed. Group B waits for Gilad, Eran (M4, M5, L14 MI, G20) and Avichai, Gilad (H5, Q3).
 - **v1, update 4 (2026-11-18):** Added 4b, the test and evaluation method: the red → green cycle using the repo's `xfail(strict=True)` convention, proof by type of finding, the workstream gate, the before/after metric comparison, and a definition of done per finding.
 - **v1, update (2026-11-25):** Eran answered M6/M7. Done on the W4 branch: band −60 / +120 (relive_beta pinned +90), `plateau_median_global` wording, `grid_clean_layout.json`; M7 B won't fix. 5 commits, suite 523 passed. Waiting on Eran: valid-only pool and meaning of valid, file format / `layout_file` key, before/after median on real data.

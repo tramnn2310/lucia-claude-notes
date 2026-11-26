@@ -62,7 +62,7 @@ SW-603 (in PR #52), SW-604, SW-605: not touched by W5.
 
 ## Group B
 
-Done: **H5** (Avichai confirmed yes 2026-11-25). Still waiting: M4, M5, L14 MI on bootstrap duplicates, G20 (Gilad, Eran).
+Done: **H5** (Avichai confirmed yes 2026-11-25); **M4, M5, L14** (Eran answered 2026-11-25, all implemented as opt-in config options, default off, for the campaign comparison). Still blocked: **G20** (Eran deferred the missing-value policy to Gilad and Avichai).
 
 ### H5 (2026-11-25): TSF is the only extractor
 
@@ -76,6 +76,62 @@ Done: **H5** (Avichai confirmed yes 2026-11-25). Still waiting: M4, M5, L14 MI o
 - **Q3 resolved:** the config check that would have required `use_tsf_features=true` for poolsel is moot — poolsel always gets TSF names now. The `patient_mrmr_consensus requires use_tsf_features` validation and the holdout error hint were removed.
 - **Configs:** `validation_only` → `[1]`; `feature_selection_mrmr_consensus`, `relive_beta_preprocess`, `type1_61` drop the flag and keep `[1,2]`; lucia550 comment + TYPE1_61 handoff doc reworded.
 - **Full suite:** 541 passed, 6 xfailed. The one failure (`test_pipeline_e2e.py::test_unused_study_group_is_left_out[NOT_LC-L-RAD]`) and the one collection error (`test_protocol6_con_fact.py`, missing `scripts.protocol6_con_fact`) pre-date H5 — both reproduce on stashed pre-H5 src.
+
+### M4, M5 (2026-11-25): two opt-in selection axes
+
+Eran's reply set the rule: all four W5 group B items change which features are selected, so each ships as a config option that is off by default, to be compared on one campaign while the published runs stay reproducible. M4 and M5 are implemented on that basis; L14 and G20 still need decisions.
+
+| Finding | Was | Now | What changed |
+|---|---|---|---|
+| M4 | ACCEPTED (sub-review) | ACCEPTED, **option implemented** | `pool_in_bootstrap` (default off): rebuild the ranking + pool inside each replicate from in-bag patients |
+| M5 | ACCEPTED (sub-review) | ACCEPTED, **option implemented** | `patient_balanced_scoring` (default off): weight each row by 1/(patient row count) in the RF relevance and the redundancy |
+
+- **Commit:** `a32c711` SW-589 M4, M5 (code + test). Findings text uncommitted.
+- **One file:** `src/core/feature_selection_poolsel.py`. The rank-gate-pool block is factored into `_rank_gate_pool` so the once-over path and the per-replicate path share it; `bootstrap_consensus` gained `patient_balanced` + a `pool_builder`; `ensemble_blend_scores` / `_abs_spearman` / `select_mrmr_soft` / `order_hybrid` take optional sample weights; new `inverse_patient_row_weights`, `_weighted_corrcoef`.
+
+**Test evidence** — `tests/unit/test_poolsel_patient_and_pool.py` (8 cases):
+
+| Case | Pins |
+|---|---|
+| defaults off == unflagged run | the two flags don't touch the default funnel |
+| inverse-count weights | every patient's rows sum to the same total; mean weight 1 |
+| weighted Spearman == plain on balanced rows | the weighting is a no-op when row counts are equal |
+| `patient_balanced_scoring` on imbalanced cohort | changes the consensus |
+| `pool_in_bootstrap` records flag + returns 6 | the per-replicate path runs |
+| pool is the union of replicate picks | the pool is rebuilt, not the fixed 29 |
+| `pool_in_bootstrap` changes the consensus | OOB/consensus differ from default |
+| both flags on the signature | they are new (old signature would `TypeError`) |
+
+- **Red check:** the flags are new parameters, so the old code can't accept them; the default-equivalence is proven by red/green — stashed `feature_selection_poolsel.py`, ran the default funnel on a synthetic cohort, and the selected features + consensus are byte-identical to the new code with the flags off.
+- **Metric impact:** none on any shipped run — all shipped `patient_mrmr_consensus` configs leave both flags unset. Numbers move only when a flag is turned on.
+
+**Decisions I made (please check):**
+1. **M4 final pool:** when `pool_in_bootstrap` is on, the final greedy ordering runs over the union of features the replicates actually selected (ranked once on all training patients for the mRMR term), since there is no longer one fixed 29-pool.
+2. **M5 scope:** weighting reaches the RF relevance (60% of the blend) and the Spearman redundancy. MI and F take no sample weight (Eran's caveat), so those two 20% slots stay unweighted, and the upstream ~900-column correlation gate stays unweighted (structural de-dup, and weighting it per fold is costly).
+3. **Status:** both stay **ACCEPTED**, not FIXED — the option is built and tested, but whether to adopt it as the default is the campaign decision Eran asked for.
+
+**Still owed / open from Eran's reply:**
+- Give Eran what the 0.69 noise figure was measured on (cohort size, feature count, class ratio, shuffled labels vs synthetic) — likely Gilad.
+- L14 MI: build both de-dup methods and compare on a campaign.
+- G20 missing-value policy and the M5 training-weight question → Gilad + Avichai.
+
+### L14 MI duplicates (2026-11-25): opt-in bootstrap schemes
+
+Eran offered two ways to stop the bootstrap's duplicate rows inflating the mutual-information term and said to build both and keep the better on a campaign. Both are implemented as one opt-in `bootstrap_scheme` on the selector.
+
+| Scheme | What it does |
+|---|---|
+| `with_replacement` (default) | today's draw; duplicate rows in both selection and fit — byte-identical to before |
+| `score_unique` (yours) | still draw with replacement, but select on each drawn patient once; duplicates stay only in the model fit |
+| `rotating` (Eran's) | draw without replacement in rotating per-class slices; no duplicates, every patient left out the same number of times |
+
+- **Commit:** `79a0e50` (code + test). Findings text uncommitted.
+- **Design points (please check):**
+  1. The loop now splits the rows used for selection from the rows used for the model fit, so `score_unique` can de-duplicate selection while the out-of-bag AUC keeps its bootstrap character. In `with_replacement` the two are the same rows, which is why the default stays byte-identical.
+  2. `rotating` picks its fold count from the cohort — capped so each per-class slice stays at/above the two-class out-of-bag floor (`min_oob_per_class=2`), because `n_bootstrap=15` on a small cohort would make every slice too small to score. On the real ~100-patient cohort the cap does nothing. Rotating then runs one replicate per slice.
+- **Test:** `tests/unit/test_poolsel_bootstrap_scheme.py` (8 cases): default == unflagged; each scheme returns six features, scores, and moves the consensus; duplicating a patient's rows shown to change the MI-based blend (the mechanism); `rotating_oob_slices` leaves every patient out exactly once with both classes in each slice; unknown scheme rejected; the flag is on the signature.
+- **Metric impact:** none on any shipped run (all leave `bootstrap_scheme` unset).
+- **Status:** L14 stays **ACCEPTED** — the bug fixes (median fill, quota cap, unknown-setting rejection) are done, and the MI-duplicate options are built and tested; adoption is the campaign decision. Only `recursive` having no ranking is left as is.
 
 ## Environment note (2026-11-25)
 Group A ran on the Windows venv. H5 ran on a fresh Linux clone: new venv `.venv` (py3.12) from `requirements-lock-linux-py312.txt` minus torch/nccl; `pytest -p no:cacheprovider --continue-on-collection-errors -W ignore`.
