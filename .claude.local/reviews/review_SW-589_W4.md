@@ -1,6 +1,6 @@
 # Review: SW-589 W4, preprocessing (GRID_CLEAN, Eran's preprocessing, blip filter)
 
-- **Status:** group A `[x]` approved by Tram on 2026-11-20 · group B in progress · group C not started · **Jira:** SW-597 (In Progress)
+- **Status:** `[x]` closed by Tram on 2026-11-26 · **Jira:** SW-597 (Done) · open items: M6 SW-619, M7 SW-620, G10 SW-612
 - **Branch:** `tram/sw-589-preprocess-features` (cut from the PR 1 branch; rebase onto master after PR #52 merges)
 - **Range (group A):** `sw589-W4-start..sw589-W4A-review` (7 commits)
 - **Not committed yet:** the group A text in `docs/pipeline_review_findings.md` (Tram's rule: review first).
@@ -162,3 +162,13 @@ Avichai: on by default; keep only < 5 before / < 4 after / < 10 total (max 4 / 3
 - **For Avichai:** with 4 / 3, a kept trace has at most 8 repaired samples, so the total limit (< 10) never rejects on its own.
 - **Still open:** verify `blip_tuple` on the published datasets (someone with GCS access: manifest `query_type: full`, or load a pickle).
 
+## Closing W4 (2026-11-26): open items moved to tickets
+
+| Finding | Status | Ticket | Waiting on |
+|---|---|---|---|
+| M6 | WAITING | SW-619 | Eran: pool scope, meaning of "valid", `eran_preprocess.py` band; then before/after median |
+| M7 | WAITING | SW-620 | Eran: layout file format, `layout_file` reuse key |
+| G10 | WAITING | SW-612 (created 2026-11-25, assigned to Eran) | Eran: final module, the md |
+| G11 | FIXED | SW-621 (Done) | Avichai confirmed `blip_tuple` at the daily meeting (Tram: enough) |
+
+SW-619, SW-620, SW-621: Tasks, assigned to Tram, linked to SW-589. SW-621 closed the same day. Findings text committed in e1cf095. The other 10 W4 findings are FIXED, so 11 of 13 are FIXED.
