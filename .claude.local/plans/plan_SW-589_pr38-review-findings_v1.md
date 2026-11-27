@@ -270,7 +270,7 @@ Two levels: **the workstream decides which branch and PR a commit goes into; the
 - G25: integrate Lenny's model dashboard (`model_dashboard/`) as a pipeline tool.
 - G15: pipeline user manual. Write it last so it reflects all the changes.
 
-**W9 design (2026-11-27)** `[~]` group A at review
+**W9 design (2026-11-27)** `[x]` closed (tag `sw589-W9-review`)
 **Tram's decisions (2026-11-27):** group A items 1 and 2 approved; G17 = ticket only, no plumbing (item 3 dropped); branch from master; G15 after PRs 2–4 merge.
 
 Step 1 check (origin/master@b0e17b0, 2026-11-27):
@@ -552,3 +552,6 @@ One PR with all 69 findings would mix safe fixes with changes that move model me
 - **v1, update (2026-11-27):** Tram approved W9 group A; findings text committed (acce994). Group B tickets created, each Relates SW-589: SW-622 (G17, Avichai; Gilad mentioned), SW-623 (G19, Avichai), SW-624 (G25, Tony; Lenny has no Jira account, named in text; Gilad mentioned). G17, G19, G25 marked WAITING in the findings (uncommitted, for review). Left in W9: G15 after PRs 2–4 merge.
 - **v1, update (2026-11-27):** Estimation rows: Tram keeps scoring every row (filter on sensor_type / breath_number in the summary); the question goes to Avichai in the PR 5 description.
 - **v1, update (2026-11-27): PR 3 rebased and opened stacked on PR 2** (exception to "no stacked PRs", Tram: reviewers off, ticket due). `tram/sw-589-training-defaults`: its 17 own commits replayed onto PR 2 (`99b7c1b`), force-pushed; conflicts only in the findings file; code changes identical per commit; suite 587 passed, same failure (SW-611) and error (SW-610). Old tip: tag `backup/training-defaults-prerebase` (`63e62b5`, pushed). PR 2 and PR 3 opened by Tram; PR 3 targets `tram/sw-589-preprocess-features`. PR 2's branch is deleted on merge (Tram can't change that setting): after PR 2 merges, check PR 3 targets `master`; never merge it into PR 2's branch. Replaces the "still needs a rebase" note above.
+- **v1, update (2026-11-27):** G15 moved to its own ticket SW-625 (Tram; relates SW-589): written after PRs 2–4 merge. Findings marked WAITING (uncommitted, for review). W9 has no code left; remaining: PR 5 description, rebase after PRs 2–4.
+- **v1, update (2026-11-27):** W9 closed: G15 text committed (60f188f), tag `sw589-W9-review` pushed. Branch `tram/sw-589-estimation-tools`: 5 commits on master. 3 FIXED (G8, G23, G24); 4 WAITING (G17 SW-622, G19 SW-623, G25 SW-624, G15 SW-625).
+- **v1, update (2026-11-27):** SW-602 (W9) moved to Done (Tram).
