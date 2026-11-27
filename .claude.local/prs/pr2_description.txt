@@ -1,0 +1,123 @@
+Title: SW-589 (PR 2/5): Preprocessing and feature selection fixes
+Branch: tram/sw-589-preprocess-features
+Target: master
+Reviewers: Gilad, Avichai (required); Eran (preprocessing)
+Tickets: SW-589; SW-597 (W4), SW-598 (W5)
+
+Review findings from docs/pipeline_review_findings.md, grouped by workstream.
+"Tests" is the number of new unit test cases for that item (each parameter variant counts as one).
+
+
+W4 (SW-597): Preprocessing (GRID_CLEAN, Eran's preprocessing, blip filter)
+55 new tests
+
+G10 - Waiting (SW-612, Eran) - Tests: 0
+Issue: Eran's preprocessing module is on master, but no stage or config calls it.
+Status: Not changed here; it waits for Eran to confirm the final version.
+
+G11 - Fixed - Tests: 16
+Issue: The blip filter was off by default, so traces with oversized blip repairs still reached feature extraction.
+Fix: The filter is now on by default (at most 4 repaired samples before the descent, 3 after, 9 in total; type_5 exempt), and the 7 experiment configs pin it off to keep reproducing past runs.
+
+H3 - Fixed - Tests: 2
+Issue: A later temperature override reset blip-rejected traces to VALID, so they could reach training.
+Fix: The blip verdict is now kept when the aggregated reason is recomputed.
+
+H4 - Fixed - Tests: 4
+Issue: A preprocessing run with GRID_CLEAN enabled failed or invalidated whole files on realistic data with AUX or temperature rows.
+Fix: AUX and INDEX rows now take the default cut so the temperature override reads real values; the mixed sensor type error was confirmed already handled on master.
+
+M6 - Partly fixed, rest waiting (SW-619, Eran) - Tests: 8
+Issue: The GRID_CLEAN plateau median is pooled over all rows, and plateau_median_global: false did not behave as its name suggested.
+Fix: The setting is now documented and rejected without a fixed layout, and the default band is median -60 / +120 (relive_beta stays at +90); the valid-only median is still open.
+
+M7 - Partly fixed, rest waiting (SW-620, Eran) - Tests: 5
+Issue: The GRID_CLEAN median and layout were re-derived on every run and never saved.
+Fix: Each run now writes grid_clean_layout.json, and reusing its values gives identical signals; the file format and direct loading are still open, and a training-only median is won't fix.
+
+M8 - Fixed - Tests: 3
+Issue: The plateau cut had no end-bound check, so some outputs were shorter than the layout.
+Fix: A trace is kept only when its whole window lies inside the signal, and dropped traces are recorded under the length filter.
+
+M9 - Fixed - Tests: 7
+Issue: The trigger search stopped short of its window, so DB +/-15 actually searched -15 to +10.
+Fix: The search now covers the whole window, limited only by the end of the signal.
+
+M10 - Confirmed, already fixed on master (0df6cd8) - Tests: 2
+Issue: A sensor type filter in preprocessing dropped AUX and INDEX rows, silently skipping the temperature and State rules.
+Confirmation: Preprocessing no longer filters on sensor type; regression tests added.
+
+L7 - Fixed - Tests: 2
+Issue: With count_down_trig_sample: false, the blip counts did not reproduce the old counts (the bracketed sample added one).
+Fix: The total now equals the reported total and the descent sample is never counted twice.
+
+L8 - Fixed - Tests: 2
+Issue: The descent sample check compared raw and repaired signals at the same index even after the repair changed the signal length.
+Fix: The two signals are compared only when their lengths match.
+
+L10 - Fixed - Tests: 4
+Issue: With median_from_up_start_to_down_start: false, every row was filtered out with a misleading error.
+Fix: The median filter now sets the accepted cut length from the traces it kept.
+
+L11 - Confirmed, already fixed on master (99db420) - Tests: 0 (covered by an existing test)
+Issue: The first_descent anchor actually pointed at the last plateau sample.
+Confirmation: The landmark is now the first descent sample and the anchors are named accordingly; Eran's exact_last_plateau alias will be confirmed with G10.
+
+
+W5 (SW-598): Feature extraction and selection
+28 new tests
+
+G7 - Confirmed, already fixed on master (0df6cd8) - Tests: 1
+Issue: Rows filtered out for training had to remain available for the estimation set.
+Confirmation: Other study groups, sensors, breaths and invalid rows all reach the estimation set and none reach train or test; regression test added.
+
+G20 - Waiting (SW-613, Gilad and Avichai) - Tests: 0
+Issue: Feature selection scores one missing-value fill while the model trains on another (median).
+Status: Not changed here; the fill policy needs a decision.
+
+H5 - Fixed - Tests: 1 (replaces 1 old test)
+Issue: patient_mrmr_consensus accepts only TSF feature names, which the default extractor did not produce.
+Fix: The TSF interval extractor is now the only extractor (use_tsf_features removed), and the default [1] gives the previous features under new names with identical values.
+
+M3 - Fixed - Tests: 3
+Issue: The feature stability report ignored the run's selection settings and hid selector failures.
+Fix: It now uses features.selection_kwargs, and counts, records and warns about failing methods.
+
+M4 - Opt-in added, default unchanged - Tests: 3, plus 2 shared with M5
+Issue: Features were pre-ranked on all training patients before the bootstrap, making out-of-bag AUCs and consensus weights optimistic.
+Fix: The new pool_in_bootstrap option (off by default) rebuilds the ranking inside each replicate; making it the default waits for the campaign comparison.
+
+M5 - Opt-in added, default unchanged - Tests: 3, plus 2 shared with M4
+Issue: Relevance and redundancy were computed on rows, so patients with many traces dominated the selection.
+Fix: The new patient_balanced_scoring option (off by default) weights each row by one over the patient's row count in the random forest and Spearman steps.
+
+L14 - 3 bugs fixed, opt-in added - Tests: 15
+Issue: patient_mrmr_consensus had edge case bugs (median fill never applied, quota pool over its size, unsupported settings crashing the run) and mutual information inflated by bootstrap duplicates.
+Fix: The three bugs are fixed (the empty-replicate case was already handled on master), and two duplicate-free bootstrap_scheme options were added with the default unchanged.
+
+
+Effect on runs
+- G11: default runs now apply the blip filter.
+- H5: feature names change; values do not.
+- M6: GRID_CLEAN runs use the wider median band.
+- L14: configs with settings patient_mrmr_consensus does not take are now rejected at load.
+- Before/after metrics: not attached yet.
+
+
+Test summary
+New unit tests: 83 test cases (W4: 55, W5: 28), all passing. One of them replaces an old test, so the suite grows by 82 (482 to 564 collected).
+
+Full suite on 7ff52eb (Linux): 557 passed, 6 expected failures, 1 failed, 1 collection error.
+
+The failure and the error also happen on master:
+- Failed: test_unused_study_group_is_left_out[NOT_LC-L-RAD]. features.control_group is ignored when features.control_groups is set, so the output keeps L-RAD instead of NOT_LC (SW-611).
+- Collection error: tests/unit/test_protocol6_con_fact.py. The module scripts/protocol6_con_fact.py is missing (SW-610).
+
+Expected failures (strict xfail, known defects recorded under SW-568, also on master):
+- 1: count features change under tiny floating point noise.
+- 1: a failed decay fit is reported as 0.
+- 3: the blind split depends on row order.
+- 1: the validation split depends on patient order.
+
+
+One commit per finding (L7/L8 and M4/M5 share commits); see the Status and Resolution lines in docs/pipeline_review_findings.md.
