@@ -69,7 +69,7 @@ Not needed. The card is an extra file and the stage is off by default; no shippe
 
 ## Round 2 (2026-11-27, Windows): which rows G8 scores
 
-- **Status:** at review. Commit `49aaa88` (local tag `sw589-W9-G8r2-review`), **not pushed**. G8 findings text uncommitted.
+- **Status:** approved by Tram (2026-11-27) and pushed to PR 5: `49aaa88` (tag `sw589-W9-G8r2-review`) and findings `16f2ee6`. Trial merge of PRs 2–5 on Windows: 626 passed, 1 skipped, 6 xfailed, SW-611 failure, SW-610 error (this replaces the "not repeated" note below).
 - **Avichai:** by default score the training sensor type and breath; allow selected breaths; never other sensor types. He confirmed that invalid rows and unused study groups are still scored when they match.
 - **Change:** the training selection comes from the model run's feature run (`resolved_feature_config.yaml`); new key `estimation.breath_numbers` (empty = training breaths, a list replaces them, unknown `estimation` keys rejected); manifest records sensor type, breaths and excluded rows; `row_index` still points into `estimation_pickle.pkl`.
 - **Files:** `src/core/stages/estimation.py`, `src/core/config/validate.py`, `configs/pipeline/validation_only.yaml`, `docs/MODEL_WEIGHTS.md`, 2 test files.
