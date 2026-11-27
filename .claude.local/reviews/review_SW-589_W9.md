@@ -57,7 +57,7 @@ Not needed. The card is an extra file and the stage is off by default; no shippe
 
 ## Decisions I made (please check)
 1. **Label without a new threshold.** Each permutation votes with its own train-CV threshold (as in training). The summary label is `grayzone` when the vote rate is in `[low_acc, 1 - low_acc]`, otherwise the majority group. `low_acc` comes from `model_reports.low_acc`, so there is no new config key. The holdout script instead uses the validation operating point from `operating_points.csv`; a training run has no such file.
-2. **Every row is scored,** including other sensor types and breaths. A model trained on one sensor type gives a number for another sensor's row, but it may mean little; `sensor_type`, `breath_number` and `aggregated_reason` are in the summary so they can be filtered. Should the stage score only the training sensor and breath by default? **Tram (2026-11-27): keep scoring every row; ask Avichai in the PR 5 description.**
+2. **Every row is scored,** including other sensor types and breaths. A model trained on one sensor type gives a number for another sensor's row, but it may mean little; `sensor_type`, `breath_number` and `aggregated_reason` are in the summary so they can be filtered. Should the stage score only the training sensor and breath by default? **Tram (2026-11-27): keep scoring every row; ask Avichai in the PR 5 description.** Superseded the same day by Avichai's answer, see Round 2.
 3. **One output per model run, overwritten on a rerun** (`<model_run>/estimations/`), not a time-stamped folder. Model runs are already one per training.
 4. **Only the latest model run per model** is scored when the stage runs on its own (`stage estimation --run-dir`).
 5. **Own scoring loop** instead of `saved_model_inference.estimate_long`: that helper keys rows by `file_write_time`, but the estimation set can hold several rows per `file_write_time` (other sensors, channels). Rows are keyed by position (`row_index`) instead. The holdout helpers are unchanged.
@@ -66,6 +66,29 @@ Not needed. The card is an extra file and the stage is off by default; no shippe
 ## Things I noticed
 - **SW-605 on master:** in the by-hand run, `--resume` reran the features stage. Estimation was skipped correctly. The fix is on the PR 4 branch.
 - The `saved_model_inference.py` docstring says the feature-selector medians "were never applied in training". The features stage does apply them to all three sets (`impute_with_selector`), so the docstring is out of date. I didn't change it (it's outside W9).
+
+## Round 2 (2026-11-27, Windows): which rows G8 scores
+
+- **Status:** at review. Commit `49aaa88` (local tag `sw589-W9-G8r2-review`), **not pushed**. G8 findings text uncommitted.
+- **Avichai:** by default score the training sensor type and breath; allow selected breaths; never other sensor types. He confirmed that invalid rows and unused study groups are still scored when they match.
+- **Change:** the training selection comes from the model run's feature run (`resolved_feature_config.yaml`); new key `estimation.breath_numbers` (empty = training breaths, a list replaces them, unknown `estimation` keys rejected); manifest records sensor type, breaths and excluded rows; `row_index` still points into `estimation_pickle.pkl`.
+- **Files:** `src/core/stages/estimation.py`, `src/core/config/validate.py`, `configs/pipeline/validation_only.yaml`, `docs/MODEL_WEIGHTS.md`, 2 test files.
+
+| Cases | Test file | What they cover | Red before? |
+|---|---|---|---|
+| 1 | `test_estimation_stage.py` | only the training sensor and breath selected; invalid and unused-group rows kept | Yes |
+| 1 | same | several breaths selected, never another sensor type | Yes |
+| 2 | same | missing `sensor_type` / `breath_number` column is an error | Yes |
+| 1 | same | `estimation.breath_numbers` empty by default and read from config | Yes |
+| 5 | same | bad breath values rejected | Yes |
+| 1 | same | no sensor type setting | Yes |
+| 1 (rewritten) | `test_estimation_e2e.py` | default scores training sensor and breath; second sensor type never scored; `--set` rerun scores selected breaths, warns on an absent one, skips when none match | Yes (scored every row) |
+
+The unit file didn't import before the change (`select_estimation_rows` missing). New: 11 cases; the W9 total goes from 13 to 24.
+
+**Full suite on Windows:** 497 passed, 6 xfailed, 3 failed, 1 collection error. Known: SW-611 failure, SW-610 error. The other 2 failures (`test_delete_pipeline_run` symlink privilege, `test_visualization_stage` path separator) are Windows-only and also fail on `master` and `60f188f`. **Not yet run on Linux**; the combined PRs 2–5 run is not repeated.
+
+**Please check:** a rerun overwrites `estimations/`; `--resume` skips a finished estimation even if the breaths changed (documented); a rerun that finds no matching rows leaves the earlier output files in place and records "skipped".
 
 ## Group B: follow-up tickets (drafts, not created)
 See the chat message. G17 values (Avichai, Gilad), G19 database update (Avichai), G25 which dashboard (Lenny, Tony, Gilad).
